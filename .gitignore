@@ -1,0 +1,49 @@
+# ==========================================================
+# Unreal Engine 5 项目 .gitignore
+# 针对 FrontendUI 项目定制
+# ==========================================================
+
+# ---------- 编译产物（UE 会重新生成）----------
+Binaries/
+Build/
+Intermediate/
+DerivedDataCache/
+Saved/
+
+# ---------- IDE / 编辑器缓存 ----------
+.vs/
+.vscode/
+.idea/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.xcodeproj/
+*.xcworkspace/
+*.code-workspace
+
+# ---------- UE 生成的工程文件（由 .uproject 重新生成）----------
+*.slnx
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+Automation_*.sln
+Automation_*.slnx
+
+
+# ---------- 系统文件 ----------
+Thumbs.db
+Desktop.ini
+*.tmp
+*.dmp
+*.log
+
+# ---------- 保留说明 ----------
+# 以下目录会被提交（它们是本项目的实际产出）：
+#   Source/            全部 C++ 代码
+#   Content/UI/        UI 蓝图、样式、输入配置
+#   Content/Maps/      测试关卡
+#   Config/            项目配置（含 Widget 映射表、输入设置）
+#   FrontendUI.uproject
