@@ -104,6 +104,60 @@
 
 **验证结果**：在表中新增一行 `GraphicsTabCollection` 后重新运行，设置界面自动多出该分类，**全程未修改任何 C++ 代码、未重新编译**。
 
+**实现细节：为什么用 `GetRowMap()` + `reinterpret_cast`**
+
+构表时不调用 `FindRow()` 逐行查找，而是直接遍历 `GetRowMap()` 并按已知行结构解读 `uint8*`。原因是 `FindRow()` 每次都要做一次 `FName → 行` 的哈希查找，而此处已持有 `GetRowMap()`，逐行 `FindRow()` 等于把同一次遍历做了两遍。
+
+> **代价**：放弃了行结构的类型校验。前提是 `DT_OptionsTabs` 的 Row Structure 必须为 `FFrontendOptionsTabRow`，否则数据会错位。目前依靠在编辑器中确认该配置。
+
+### 健壮性修复
+
+在持续迭代中发现并修复了两类缺陷。
+
+#### 1. 排序比较函数违反严格弱序（自研逻辑缺陷）
+
+`BuildTabCollectionsFromTable()` 最初的实现是「先取全部 RowName，再按 `SortOrder` 排序」，比较函数如下：
+
+```cpp
+RowNames.Sort([InTable](const FName& A, const FName& B)
+{
+    const FFrontendOptionsTabRow* RowA = InTable->FindRow<FFrontendOptionsTabRow>(A, TEXT("OptionsTabSort"), false);
+    const FFrontendOptionsTabRow* RowB = InTable->FindRow<FFrontendOptionsTabRow>(B, TEXT("OptionsTabSort"), false);
+    if (!RowA || !RowB) { return false; }
+    return RowA->SortOrder < RowB->SortOrder;
+});
+```
+
+存在两个问题：
+
+| 问题 | 后果 |
+|---|---|
+| 比较函数内部调用 `FindRow()` | 每次比较最多 2 次哈希查找 + 字符串比较，n 个分类共 O(n log n) 次查表 |
+| 任一行数据缺失时**两个方向都返回 `false`** | `Comp(A,B)` 与 `Comp(B,A)` 可能同时为假，**违反 strict weak ordering**，`TArray::Sort` 的行为未定义 |
+
+**修复方式**：改为「单次遍历收集排序键 → 对纯值排序」。遍历时一次性取出 `RowName` / `DisplayName` / `SortOrder` 存入临时结构体，比较函数只比较 `int32`，成为满足严格弱序的纯函数；`DisplayName` 顺带取出，消除了原先排序后再 `FindRow()` 取显示名的重复查表。
+
+**效果**：查表次数由 O(n log n) 降至 O(n)，且排序结果不再依赖未定义行为。
+
+#### 2. `BindWidget` 指针缺少空指针保护
+
+`UWidget_OptionsScreen` 中 `TabListWidget_OptionsTabs` 为 `meta = (BindWidget)` 绑定，蓝图漏绑时该指针为空。原实现在两个入口处直接解引用：
+
+| 入口 | 风险 |
+|---|---|
+| `NativeOnInitialized()` | 直接调用 `OnTabSelected.AddUniqueDynamic(...)`，漏绑即崩溃 |
+| `NativeOnActivated()` | 直接遍历 `GetRegisteredOptionsTabCollections()` 并调用 `RequestRegisterTab()` |
+
+**修复方式**（与项目内其他失败处理保持一致）：
+
+- `NativeOnInitialized()`：用 `ensureMsgf` 报一次配置错误（编辑器下即时报出，Shipping 下不致命），仅在 `IsValid()` 通过后才注册回调
+- `NativeOnActivated()`：入口处判空并输出 `UE_LOG` 错误日志后提前返回
+- `GetOrCreateDataRegistry()`：`checkf` 降级为 `ensureMsgf`；`NewObject` 补上 `this` 作为 Outer，把注册中心的生命周期挂到 Widget 上
+
+#### 附：问题定位方式
+
+两处缺陷均通过**逐文件对比课程参考实现**定位：将本工程 `Source/` 与课程仓库 `vinceright3/FrontendUIProgramming` 的同名文件逐个 diff，区分「跟随教程的部分」与「自己改动的部分」，再对自研代码单独 review。
+
 ### 其他修正
 
 - 修正设置分类拼写（`Vedio` → `Video`、`Controll` → `Control`）
@@ -174,6 +228,8 @@ Config/                    项目配置（含 Widget 映射表、输入设置）
 ## 已知不足
 
 - **设置项尚未打通**：目前完成的是框架与分类动态注册，`UWidget_OptionsScreen::OnOptionsTabSelected` 中仅打印日志，各分类下的具体设置项（分辨率、音量等）待实现
+- **`OptionsDataRegistry` 自身尚未做行结构校验**：构表时用 `GetRowMap()` + `reinterpret_cast` 换取查找性能，代价是放弃了类型检查；更稳妥的做法是在 `LoadOptionsTabTable()` 中比对 `GetRowStruct()` 与 `FFrontendOptionsTabRow::StaticStruct()`，不一致时报警并放弃构表 —— **此项待补**
+- **`FrontendUISubsystem` 中仍有若干 `check` / `CastChecked`**：异步推送界面链路上还有 4 处硬断言未降级（`FrontendUISubsystem.cpp`），失败处理策略尚未全项目统一
 - **Reset 操作未实现**：`OnResetBoundActionTriggered` 目前仅打印日志，尚未接入真实重置逻辑
 - **无本地化**：UI 文案目前为硬编码英文 `FText`，正式项目应走 String Table
 - **无设置持久化**：尚未接入 `UGameUserSettings` 或 SaveGame
