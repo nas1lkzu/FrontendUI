@@ -31,21 +31,41 @@ void UWidget_OptionsScreen::NativeOnInitialized()
 			FSimpleDelegate::CreateUObject(this, &UWidget_OptionsScreen::OnBackBoundActionTriggered)
 		)
 	);
-	TabListWidget_OptionsTabs->OnTabSelected.AddUniqueDynamic(this, &UWidget_OptionsScreen::OnOptionsTabSelected);
+	// BindWidget 缺失属于蓝图配置错误：这里报一次，运行期各入口再做兜底，避免直接崩溃
+	ensureMsgf(TabListWidget_OptionsTabs, TEXT("[OptionsScreen] TabListWidget_OptionsTabs is not bound in the widget blueprint."));
+
+	if (IsValid(TabListWidget_OptionsTabs))
+	{
+		TabListWidget_OptionsTabs->OnTabSelected.AddUniqueDynamic(this, &UWidget_OptionsScreen::OnOptionsTabSelected);
+	}
 }
 
 void UWidget_OptionsScreen::NativeOnActivated()
 {
 	Super::NativeOnActivated();
-	for (UListDataObject_Collection* TabCollection : GetOrCreateDataRegistry()->GetRegisteredOptionsTabCollections())
+
+	if (!IsValid(TabListWidget_OptionsTabs))
 	{
+		UE_LOG(LogTemp, Error, TEXT("[OptionsScreen] TabListWidget_OptionsTabs is not bound. Options tabs cannot be registered."));
+		return;
+	}
+
+	const TArray<UListDataObject_Collection*>& TabCollections = GetOrCreateDataRegistry()->GetRegisteredOptionsTabCollections();
+
+	for (UListDataObject_Collection* TabCollection : TabCollections)
+	{
+		if (!TabCollection)
+		{
+			continue;
+		}
+
 		const FName TabID = TabCollection->GetDataID();
 		if (TabListWidget_OptionsTabs->GetTabButtonBaseByID(TabID) != nullptr)
 		{
 			continue;
 		}
 
-		TabListWidget_OptionsTabs->RequestRegisterTab(TabCollection->GetDataID(), TabCollection->GetDataDisplayName());
+		TabListWidget_OptionsTabs->RequestRegisterTab(TabID, TabCollection->GetDataDisplayName());
 	}
 }
 
@@ -58,11 +78,11 @@ UOptionsDataRegistry* UWidget_OptionsScreen::GetOrCreateDataRegistry()
 {
 	if (!CreatedOwningDataRegistry)
 	{
-		CreatedOwningDataRegistry =  NewObject<UOptionsDataRegistry>();
+		CreatedOwningDataRegistry = NewObject<UOptionsDataRegistry>(this);
 		CreatedOwningDataRegistry->InitOptionsDataRegistry(GetOwningLocalPlayer());
 	}
 
-	checkf(CreatedOwningDataRegistry, TEXT("Data registry for options is not valid."));
+	ensureMsgf(CreatedOwningDataRegistry, TEXT("[OptionsScreen] Failed to create the options data registry."));
 	return CreatedOwningDataRegistry;
 }
 

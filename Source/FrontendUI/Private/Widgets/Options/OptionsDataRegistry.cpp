@@ -39,31 +39,48 @@ UDataTable* UOptionsDataRegistry::LoadOptionsTabTable()
 
 void UOptionsDataRegistry::BuildTabCollectionsFromTable(UDataTable* InTable)
 {
-	TArray<FName> RowNames;
-	InTable->GetRowMap().GenerateKeyArray(RowNames);
-
-	RowNames.Sort([InTable](const FName& A, const FName& B)
-		{
-			const FFrontendOptionsTabRow* RowA = InTable->FindRow<FFrontendOptionsTabRow>(A, TEXT("OptionsTabSort"), false);
-			const FFrontendOptionsTabRow* RowB = InTable->FindRow<FFrontendOptionsTabRow>(B, TEXT("OptionsTabSort"), false);
-			if (!RowA || !RowB)
-			{
-				return false;
-			}
-			return RowA->SortOrder < RowB->SortOrder;
-		});
-
-	for (const FName& RowName : RowNames)
+	if (!InTable)
 	{
-		const FFrontendOptionsTabRow* Row = InTable->FindRow<FFrontendOptionsTabRow>(RowName, TEXT("OptionsTabInit"), false);
+		return;
+	}
+
+	// Tab 注册所需的全部数据在收集阶段一次取出，排序时不再回头查表
+	struct FTabRowEntry
+	{
+		FName RowName;
+		FText DisplayName;
+		int32 SortOrder = 0;
+	};
+
+	TArray<FTabRowEntry> SortedRows;
+	SortedRows.Reserve(InTable->GetRowMap().Num());
+
+	for (const TPair<FName, uint8*>& RowPair : InTable->GetRowMap())
+	{
+		const FFrontendOptionsTabRow* Row =
+			reinterpret_cast<const FFrontendOptionsTabRow*>(RowPair.Value);
+
 		if (!Row)
 		{
 			continue;
 		}
 
+		FTabRowEntry& NewEntry = SortedRows.AddDefaulted_GetRef();
+		NewEntry.RowName = RowPair.Key;
+		NewEntry.DisplayName = Row->DisplayName;
+		NewEntry.SortOrder = Row->SortOrder;
+	}
+
+	SortedRows.Sort([](const FTabRowEntry& A, const FTabRowEntry& B)
+		{
+			return A.SortOrder < B.SortOrder;
+		});
+
+	for (const FTabRowEntry& Entry : SortedRows)
+	{
 		UListDataObject_Collection* TabCollection = NewObject<UListDataObject_Collection>(this);
-		TabCollection->SetDataID(RowName);					
-		TabCollection->SetDataDisplayName(Row->DisplayName);
+		TabCollection->SetDataID(Entry.RowName);
+		TabCollection->SetDataDisplayName(Entry.DisplayName);
 		RegisteredOptionsTabCollections.Add(TabCollection);
 	}
 }
