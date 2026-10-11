@@ -7,6 +7,7 @@
 #include "OptionsDataRegistry.generated.h"
 
 class UListDataObject_Collection;
+class UDataTable;
 /**
  * 
  */
@@ -18,10 +19,11 @@ public:
 	void InitOptionsDataRegistry(ULocalPlayer* InLocalPlayer);
 	const TArray<UListDataObject_Collection*>& GetRegisteredOptionsTabCollections() const {return RegisteredOptionsTabCollections;}
 private:
-	void InitGameplayTabCollection();
-	void InitAudioTabCollection();
-	void InitVideoTabCollection();
-	void InitControlTabCollection();
+	UDataTable* LoadOptionsTabTable();
+	void BuildTabCollectionsFromTable(UDataTable* InTable);
+
+	UPROPERTY(Transient)
+	TObjectPtr<UDataTable> CachedTabTable;
 
 	UPROPERTY(Transient)
 	TArray<UListDataObject_Collection*> RegisteredOptionsTabCollections;
