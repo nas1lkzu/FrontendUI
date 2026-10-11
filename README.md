@@ -158,10 +158,6 @@ RowNames.Sort([InTable](const FName& A, const FName& B)
 
 两处缺陷均通过**逐文件对比课程参考实现**定位：将本工程 `Source/` 与课程仓库 `vinceright3/FrontendUIProgramming` 的同名文件逐个 diff，区分「跟随教程的部分」与「自己改动的部分」，再对自研代码单独 review。
 
-### 其他修正
-
-- 修正设置分类拼写（`Vedio` → `Video`、`Controll` → `Control`）
-
 ---
 
 ## 如何运行
