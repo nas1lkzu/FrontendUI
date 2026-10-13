@@ -44,7 +44,15 @@ void UOptionsDataRegistry::BuildTabCollectionsFromTable(UDataTable* InTable)
 		return;
 	}
 
-	// Tab 注册所需的全部数据在收集阶段一次取出，排序时不再回头查表
+	if (InTable->GetRowStruct() != FFrontendOptionsTabRow::StaticStruct())
+	{
+		ensureMsgf(false,
+			TEXT("[OptionsDataRegistry] DataTable row struct mismatch: expected '%s', got '%s'. Aborting tab construction."),
+			*FFrontendOptionsTabRow::StaticStruct()->GetName(),
+			InTable->GetRowStruct() ? *InTable->GetRowStruct()->GetName() : TEXT("None"));
+		return;
+	}
+
 	struct FTabRowEntry
 	{
 		FName RowName;
@@ -57,13 +65,13 @@ void UOptionsDataRegistry::BuildTabCollectionsFromTable(UDataTable* InTable)
 
 	for (const TPair<FName, uint8*>& RowPair : InTable->GetRowMap())
 	{
-		const FFrontendOptionsTabRow* Row =
-			reinterpret_cast<const FFrontendOptionsTabRow*>(RowPair.Value);
-
-		if (!Row)
+		if (!RowPair.Value)
 		{
 			continue;
 		}
+
+		const FFrontendOptionsTabRow* Row =
+			reinterpret_cast<const FFrontendOptionsTabRow*>(RowPair.Value);
 
 		FTabRowEntry& NewEntry = SortedRows.AddDefaulted_GetRef();
 		NewEntry.RowName = RowPair.Key;

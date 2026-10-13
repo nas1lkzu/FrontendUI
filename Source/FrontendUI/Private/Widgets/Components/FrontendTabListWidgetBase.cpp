@@ -21,7 +21,7 @@ void UFrontendTabListWidgetBase::ValidateCompiledDefaults(IWidgetCompilerLog& Co
 	if (!TabButtonEntryWidgetClass)
 	{
 		CompileLog.Error(FText::FromString(
-			"The varible TabButtonEntryWidgetClass has no valid entry specified." + GetClass()->GetName() + " needs a valid entry widget class to function properly")
+			"The variable TabButtonEntryWidgetClass has no valid entry specified." + GetClass()->GetName() + " needs a valid entry widget class to function properly")
 		);
 	}
 }
