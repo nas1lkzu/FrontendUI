@@ -102,7 +102,7 @@
 | **必须按 `SortOrder` 显式排序** | `GetRowMap()` 的遍历走的是 `TMap` 底层 `TSet` 的**稀疏数组槽位**（`0,1,2,…` 跳过空槽），哈希桶只参与查找、不参与遍历。只插入不删除时顺序恰好等于插入顺序；但**删除后再插入会复用刚释放的槽位** —— 删中间一行再加一行，新行会出现在**中间**。即顺序是「资产保存 + 增删历史」的产物，**没有任何接口承诺它**，被 CSV 重导入或删行操作改掉后 UI 顺序会静默变化。用显式字段把它变成可 diff 的数据契约 |
 | **入场校验行结构** | 该函数用 `GetRowMap()` + `reinterpret_cast` 按固定偏移裸读行内存（省掉 `FindRow` 的哈希查找），代价是放弃了引擎的类型校验，因此入口显式比对 `GetRowStruct()`，不一致时 `ensureMsgf` 报出 actual/expected 并放弃构表。注意用**相等**而非引擎 `FindRowInternal` 所用的 `IsChildOf`：`FindRow<T>` 按 `StaticStruct` 逐字段访问、允许子类，而裸读只认**这一种内存布局**，子类若有额外字段偏移即错位 |
 
-> **约定**：`SortOrder` 必须唯一。重复时 Tab 顺序由 `TArray::Sort`（不稳定排序）的内部交换决定，没有业务含义、也不应被依赖 —— 与行结构一样，重复的 `SortOrder` 属于配置错误。
+> **约定**：`SortOrder` 必须唯一。重复时 Tab 顺序由 `TArray::Sort`（不稳定排序）的内部交换决定，没有业务含义、也不应被依赖 —— 与行结构一样，重复的 `SortOrder` 属于配置错误。该约定已由代码强制校验（见「扩展 2 · 缺陷 3」）。
 
 **验证方式**：在表中新增一行 `GraphicsTabCollection` 后重新运行，设置界面自动多出该分类，**全程未修改 C++ 代码、未重新编译**。
 
@@ -136,7 +136,27 @@ return RowA->SortOrder < RowB->SortOrder;
 - `NativeOnActivated()`：入口处判空并输出 `UE_LOG` 错误日志后提前返回
 - `GetOrCreateDataRegistry()`：补上 `ensureMsgf`，并给 `NewObject` 传入 `this` 作为 Outer，把注册中心的生命周期挂到 Widget 上
 
-**定位方式**：两处缺陷均通过**逐文件与课程参考实现 diff** 定位 —— 把本工程 `Source/` 与课程仓库的同名文件逐个对比，区分「跟随课程的部分」与「自己改动的部分」，再对自研代码单独 review。
+**定位方式**：三处缺陷均通过**逐文件与课程参考实现 diff** 定位 —— 把本工程 `Source/` 与课程仓库的同名文件逐个对比，区分「跟随课程的部分」与「自己改动的部分」，再对自研代码单独 review。
+
+#### 缺陷 3：`SortOrder` 重复时静默接受
+
+`SortOrder` 是唯一的排序键，但表里写重复时没有任何校验：程序照常启动，重复行的先后由 `TArray::Sort`（不稳定排序）的内部交换决定 —— 顺序既无业务含义，也不能复现，属于配置错误被静默接受。
+
+**修复方式**：在 `BuildTabCollectionsFromTable()` 中补上 `ensureMsgf` 校验。先把全部 `SortOrder` 收进 `TMap<int32, TArray<FName>>` 分组，再对每组多于一行的报告一次，因此报错能同时给出「哪个 `SortOrder` 重复」与「哪几行撞在一起」：
+
+```
+[OptionsDataRegistry] Duplicate SortOrder '1' in table 'DT_OptionsTabs': 2 rows share this order
+('AudioTabCollection', 'VideoTabCollection'). Tab order between them is decided by an unstable
+sort and is not meaningful. Give each row a unique SortOrder.
+```
+
+| 判断 | 理由 |
+|---|---|
+| **先分组再报告**，而非边遍历边查重 | 一次遍历就能报出完整的冲突行名集合，直接定位到要改的行；边遍历边报只能报「后遇到的那一行」，前者还得回溯 |
+| **只报错、不中止构表** | 与入口处的行结构校验刻意区分：行结构不一致时裸读内存已不可信，必须 `return`；`SortOrder` 重复不影响数据正确性，只是相对顺序不可依赖，构表继续、把问题暴露出来更合适 —— 对应「可恢复的配置校验降级为 `ensureMsgf` + 兜底」 |
+| **放在 `Sort` 之前** | `ensure` 在调试器里是断点，放在排序前断下时栈是干净的构表调用；放在排序后则隔着一层 `TArray::Sort` 内部帧 |
+
+> **局限**：`ensure` 同一调用点每会话只报一次（引擎按 `__FILE__` + `__LINE__` 哈希去重），因此一次运行中**只有第一组**重复会被打印。要让每组都出声需换成 `ensureAlwaysMsgf`，或改为收集全部冲突后拼进单条消息。
 
 ---
 
@@ -221,6 +241,7 @@ FrontendUI/
 
 - `Widget_OptionsScreen.cpp` 中 3 处硬失败已降级 —— `BindWidget` 指针改用 `ensureMsgf` + `IsValid()` 保护、`NativeOnActivated` 入口判空后提前返回、`GetOrCreateDataRegistry()` 的 `checkf` 降为 `ensureMsgf` 并补上 `NewObject` 的 Outer
 - `BuildTabCollectionsFromTable()` 补上行结构校验（`ensureMsgf` 报出 actual/expected 双方），并把判空移到 `reinterpret_cast` **之前**、改判 `RowPair.Value` —— 前者检查的是「这行有无数据」，而不是「转换是否失败」（`reinterpret_cast` 不会失败）
+- `BuildTabCollectionsFromTable()` 补上 `SortOrder` 唯一性校验（`ensureMsgf` 一次报出重复值与全部冲突行名），并把原先只写在文档里的「`SortOrder` 必须唯一」约定落成代码断言
 - 修正 `FrontendTabListWidgetBase.cpp` 中 `ValidateCompiledDefaults` 的拼写错误（`varible` → `variable`）
 
 ### 演示范围

@@ -79,6 +79,32 @@ void UOptionsDataRegistry::BuildTabCollectionsFromTable(UDataTable* InTable)
 		NewEntry.SortOrder = Row->SortOrder;
 	}
 
+	// SortOrder is the only sort key, so duplicate rows have no dependable relative order:
+	// TArray::Sort is unstable and decides their order by its internal swaps. Treat duplicates as a config error.
+	TMap<int32, TArray<FName>> RowsBySortOrder;
+	RowsBySortOrder.Reserve(SortedRows.Num());
+
+	for (const FTabRowEntry& Entry : SortedRows)
+	{
+		RowsBySortOrder.FindOrAdd(Entry.SortOrder).Add(Entry.RowName);
+	}
+
+	for (const TPair<int32, TArray<FName>>& Pair : RowsBySortOrder)
+	{
+		if (Pair.Value.Num() <= 1)
+		{
+			continue;
+		}
+
+		ensureMsgf(false,
+			TEXT("[OptionsDataRegistry] Duplicate SortOrder '%d' in table '%s': %d rows share this order ('%s'). ")
+			TEXT("Tab order between them is decided by an unstable sort and is not meaningful. Give each row a unique SortOrder."),
+			Pair.Key,
+			*InTable->GetName(),
+			Pair.Value.Num(),
+			*FString::JoinBy(Pair.Value, TEXT("', '"), [](const FName& RowName) { return RowName.ToString(); }));
+	}
+
 	SortedRows.Sort([](const FTabRowEntry& A, const FTabRowEntry& B)
 		{
 			return A.SortOrder < B.SortOrder;
