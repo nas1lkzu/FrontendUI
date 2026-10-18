@@ -31,7 +31,7 @@ void UWidget_OptionsScreen::NativeOnInitialized()
 			FSimpleDelegate::CreateUObject(this, &UWidget_OptionsScreen::OnBackBoundActionTriggered)
 		)
 	);
-	// BindWidget 缺失属于蓝图配置错误：这里报一次，运行期各入口再做兜底，避免直接崩溃
+
 	ensureMsgf(TabListWidget_OptionsTabs, TEXT("[OptionsScreen] TabListWidget_OptionsTabs is not bound in the widget blueprint."));
 
 	if (IsValid(TabListWidget_OptionsTabs))

@@ -63,6 +63,7 @@ void UFrontendUISubsystem::PushSoftWidgetToStackAsync
 					return;
 				}
 				UCommonActivatableWidgetContainerBase* FoundWidgetStack = CreatedPrimaryLayout->FindWidgetStackByTag(InWidgetStackTag);
+
 				UWidget_ActivatableBase* CreatedWidget = FoundWidgetStack->AddWidget<UWidget_ActivatableBase>
 					(
 						LoadedWidgetClass,
