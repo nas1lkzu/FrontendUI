@@ -96,7 +96,7 @@ void UOptionsDataRegistry::BuildTabCollectionsFromTable(UDataTable* InTable)
 			continue;
 		}
 
-		ensureMsgf(false,
+		ensureAlwaysMsgf(false,
 			TEXT("[OptionsDataRegistry] Duplicate SortOrder '%d' in table '%s': %d rows share this order ('%s'). ")
 			TEXT("Tab order between them is decided by an unstable sort and is not meaningful. Give each row a unique SortOrder."),
 			Pair.Key,
